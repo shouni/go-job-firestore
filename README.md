@@ -73,7 +73,7 @@ type JobStatus struct {
 
 ### 3. Store で読み書きする
 
-型引数を取るためパッケージ関数です（Go のメソッドは型引数を取れません）。
+型引数は `Store` 自身に付いています。Go 1.27 からメソッドも型引数を取れますが、**interface のメソッドは今も取れません。** `Recorder` が受ける差し替え口の `StatusStore[T]` は interface なので、型引数を型の側に置く形でしか揃いません。構築は `NewStore` パッケージ関数です。
 
 ```go
 client, err := factory.Client()
@@ -83,12 +83,14 @@ if err != nil {
 store := jobfirestore.NewStore[JobStatus](client, serviceName)
 
 // 投入直後に queued を記録する。JobID と UpdatedAt は Save が打刻します
-err = store.Save(ctx, jobID, JobStatus{Status: jobfirestore.Status{
+err = store.Save(ctx, jobID, JobStatus{
     State: jobfirestore.StateQueued, Command: "generate",
-}})
+})
 
 status, err := store.Get(ctx, jobID)
 ```
+
+埋め込み先のフィールド（`State`・`Command`）を複合リテラルへ直接書けるのは **Go 1.27 以降**です。**利用側の `go.mod` の `go` 行**で決まるので、1.26 以前のままなら `JobStatus{Status: jobfirestore.Status{...}}` と書いてください（ライブラリの動作は変わりません）。
 
 コレクションは**サービスごとに 1 本**で、名前は成果物のバケットと揃えます（「[ドキュメントの形](#-ドキュメントの形)」を参照）。
 
