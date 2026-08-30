@@ -16,13 +16,31 @@ const countAlias = "all"
 // listOptions は List の絞り込みと並び順です。
 type listOptions struct {
 	state      State
-	command    string
+	commands   []string
+	fields     []fieldFilter
 	orderBy    string
 	descending bool
 }
 
+// fieldFilter は、サービス固有のフィールド 1 つに対する等値の絞り込みです。
+type fieldFilter struct {
+	path  string
+	value any
+}
+
 // ListOption は List の挙動を変更します。
 type ListOption func(*listOptions)
+
+// newListOptions は既定値へオプションを適用します。
+func newListOptions(opts []ListOption) listOptions {
+	cfg := listOptions{orderBy: "queued_at", descending: true}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
+	return cfg
+}
 
 // WithState は、指定した状態のジョブだけを一覧します。
 func WithState(state State) ListOption {
@@ -30,8 +48,36 @@ func WithState(state State) ListOption {
 }
 
 // WithCommand は、指定したコマンドのジョブだけを一覧します。
-func WithCommand(command string) ListOption {
-	return func(o *listOptions) { o.command = command }
+//
+// 複数渡すと、そのいずれかに一致するジョブを返します。1 つのコマンドが 1 つの一覧に
+// 対応するとは限らないためです（同じ履歴画面へ出したいコマンドが 2 つある、など）。
+// Firestore の in 検索になるので値は 30 個までです。空文字は無視します。
+func WithCommand(commands ...string) ListOption {
+	return func(o *listOptions) {
+		for _, command := range commands {
+			if command != "" {
+				o.commands = append(o.commands, command)
+			}
+		}
+	}
+}
+
+// WithField は、サービス固有のフィールドが指定した値と等しいジョブだけを一覧します。
+// path は Firestore のフィールド名です（Go の識別子ではなく firestore タグの名前）。
+//
+// State と Command はどのサービスでも同じ意味を持つので専用のオプションがありますが、
+// それ以外の絞り込みはサービスごとに違います。ここが無いと、利用側は自分のフィールドで
+// 絞るために全件を読んでメモリで落とすことになり、一覧を Firestore へ移した意味が
+// 半分消えます。
+//
+// 等値だけです。範囲比較を許すと、Firestore が不等号のフィールドを並べ替えの先頭に
+// 要求するため、WithOrderBy と組み合わせたときに黙って別の並び順になります。
+func WithField(path string, value any) ListOption {
+	return func(o *listOptions) {
+		if path != "" {
+			o.fields = append(o.fields, fieldFilter{path: path, value: value})
+		}
+	}
 }
 
 // WithOrderBy は並べ替えるフィールドと向きを変えます。
@@ -56,12 +102,7 @@ func WithOrderBy(field string, descending bool) ListOption {
 // デコードに失敗したドキュメントはエラーとして返します。一覧から黙って落とすと、
 // 壊れた記録があることに誰も気づきません。
 func (s *Store[T]) List(ctx context.Context, page, perPage int, opts ...ListOption) ([]T, PageMeta, error) {
-	cfg := listOptions{orderBy: "queued_at", descending: true}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(&cfg)
-		}
-	}
+	cfg := newListOptions(opts)
 
 	if s.client == nil {
 		return nil, PageMeta{}, errors.New("jobfirestore: client is not configured")
@@ -74,8 +115,15 @@ func (s *Store[T]) List(ctx context.Context, page, perPage int, opts ...ListOpti
 	if cfg.state != "" {
 		query = query.Where("state", "==", string(cfg.state))
 	}
-	if cfg.command != "" {
-		query = query.Where("command", "==", cfg.command)
+	switch len(cfg.commands) {
+	case 0:
+	case 1:
+		query = query.Where("command", "==", cfg.commands[0])
+	default:
+		query = query.Where("command", "in", cfg.commands)
+	}
+	for _, f := range cfg.fields {
+		query = query.Where(f.path, "==", f.value)
 	}
 
 	total, err := count(ctx, query)

@@ -193,6 +193,24 @@ items, meta, err := store.List(ctx, page, perPage,
 )
 ```
 
+絞り込みは 3 種類です。
+
+| オプション | 絞り込む対象 | 備考 |
+|---|---|---|
+| `WithState` | `state` | 状態はどのサービスでも同じ意味を持つ |
+| `WithCommand` | `command` | 可変長。2 つ以上渡すと `in` 検索（30 個まで）。1 つの一覧に複数のコマンドが対応することがある |
+| `WithField` | サービス固有のフィールド | 等値のみ。`path` は `firestore` タグの名前 |
+
+`WithField` が要るのは、サービス固有のフィールドで絞れないと、利用側が全件を読んでメモリで落とすことになり、一覧を Firestore へ移した意味が半分消えるからです。等値だけなのは、不等号を許すと Firestore が**そのフィールドを並べ替えの先頭に要求する**ため、`WithOrderBy` と組み合わせたときに黙って別の並び順になるからです。
+
+```go
+// 「タイトル未合成の画像ジョブだけ」を新しい順に
+items, meta, err := store.List(ctx, page, perPage,
+    jobfirestore.WithCommand("generate_image_from_recipe"),
+    jobfirestore.WithField("title_applied", false),
+)
+```
+
 ページ番号は 1 始まり、`perPage` が 0 以下のときはページングせず全件を返します。`Total` は全件読み込みではなく `Count` 集計クエリで取ります。
 
 `PageMeta` の JSON タグは、既存サービスが返しているレスポンスと同じ形です。画面と M2M クライアントの双方が依存しているため、変更するときは利用側の追随が要ります。
