@@ -74,10 +74,14 @@ type JobStatus struct {
 型引数を取るためパッケージ関数です（Go のメソッドは型引数を取れません）。
 
 ```go
-store := jobfirestore.NewStore[JobStatus](factory.Client(), "jobs")
+client, err := factory.Client()
+if err != nil {
+    return err
+}
+store := jobfirestore.NewStore[JobStatus](client, "jobs")
 
 // 投入直後に queued を記録する。JobID と UpdatedAt は Save が打刻します
-err := store.Save(ctx, jobID, JobStatus{Status: jobfirestore.Status{
+err = store.Save(ctx, jobID, JobStatus{Status: jobfirestore.Status{
     State: jobfirestore.StateQueued, Command: "generate",
 }})
 
