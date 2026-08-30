@@ -1,0 +1,19 @@
+# CI の実体は shouni/workflows。ジョブ構成とタグ運用の理由はそちらの README にある。
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: shouni/workflows/.github/workflows/go-ci.yml@v1
