@@ -104,11 +104,67 @@ func WithOrderBy(field string, descending bool) ListOption {
 func (s *Store[T]) List(ctx context.Context, page, perPage int, opts ...ListOption) ([]T, PageMeta, error) {
 	cfg := newListOptions(opts)
 
+	query, err := s.filteredQuery(cfg)
+	if err != nil {
+		return nil, PageMeta{}, err
+	}
+
+	total, err := count(ctx, query)
+	if err != nil {
+		return nil, PageMeta{}, err
+	}
+
+	meta := newPageMeta(page, perPage, total)
+	if total == 0 {
+		return nil, meta, nil
+	}
+
+	query = orderedQuery(query, cfg)
+	if meta.PerPage > 0 {
+		query = query.Offset(meta.offset()).Limit(meta.PerPage)
+	}
+
+	items, err := collect[T](ctx, query)
+	if err != nil {
+		return nil, meta, err
+	}
+	return items, meta, nil
+}
+
+// Latest は、絞り込みに一致するジョブ状態を新しい順に limit 件返します。
+// limit が 0 以下のときは一致するもの全件を返します。
+//
+// **件数集計をしません。** List が総件数を先に数えるのはページ送りのためで、
+// 「最新の数件だけ並べる」画面には使い道がありません。抜粋しか出さない画面が、
+// 開くたびに使わない集計クエリで 1 往復ぶん余計に待つことになります。
+//
+// PageMeta を返さないのも同じ理由です。総件数を知らないままページ情報を組み立てると、
+// Total と TotalPages に 0 か当てずっぽうを入れることになり、受け取った側は
+// 「本当に 0 件」なのか「数えていない」のかを区別できません。ページ送りが要るなら
+// List を、要らないならこちらを使ってください。
+func (s *Store[T]) Latest(ctx context.Context, limit int, opts ...ListOption) ([]T, error) {
+	cfg := newListOptions(opts)
+
+	query, err := s.filteredQuery(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	query = orderedQuery(query, cfg)
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	return collect[T](ctx, query)
+}
+
+// filteredQuery は、絞り込みだけを適用したクエリを返します。
+// 件数集計と本体の取得が同じ条件を見るよう、組み立てを 1 か所に置きます。
+func (s *Store[T]) filteredQuery(cfg listOptions) (firestore.Query, error) {
 	if s.client == nil {
-		return nil, PageMeta{}, errors.New("jobfirestore: client is not configured")
+		return firestore.Query{}, errors.New("jobfirestore: client is not configured")
 	}
 	if s.collection == "" {
-		return nil, PageMeta{}, errors.New("jobfirestore: collection is not configured")
+		return firestore.Query{}, errors.New("jobfirestore: collection is not configured")
 	}
 
 	query := s.client.Collection(s.collection).Query
@@ -125,31 +181,16 @@ func (s *Store[T]) List(ctx context.Context, page, perPage int, opts ...ListOpti
 	for _, f := range cfg.fields {
 		query = query.Where(f.path, "==", f.value)
 	}
+	return query, nil
+}
 
-	total, err := count(ctx, query)
-	if err != nil {
-		return nil, PageMeta{}, err
-	}
-
-	meta := newPageMeta(page, perPage, total)
-	if total == 0 {
-		return nil, meta, nil
-	}
-
+// orderedQuery は並べ替えを適用します。
+func orderedQuery(query firestore.Query, cfg listOptions) firestore.Query {
 	direction := firestore.Asc
 	if cfg.descending {
 		direction = firestore.Desc
 	}
-	query = query.OrderBy(cfg.orderBy, direction)
-	if meta.PerPage > 0 {
-		query = query.Offset(meta.offset()).Limit(meta.PerPage)
-	}
-
-	items, err := collect[T](ctx, query)
-	if err != nil {
-		return nil, meta, err
-	}
-	return items, meta, nil
+	return query.OrderBy(cfg.orderBy, direction)
 }
 
 // collect はクエリの結果を T へデコードして集めます。
