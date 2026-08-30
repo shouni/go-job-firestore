@@ -29,7 +29,7 @@ Cloud Tasks へ投入した非同期ジョブの**進行状況を記録し、履
 → 1 件ずつ状態ファイルを並行に読む → 重さを短期キャッシュで隠す
 ```
 
-走査・ソート・キャッシュのいずれも、「クエリが無い」ことの回避策です。Firestore には `Where` / `OrderBy` / `Count` があるので、そのどれも要らなくなります。**その差が、Firestore を持ち込むだけの価値があるか**が、ここで確かめたいことです。
+走査・ソート・キャッシュのいずれも、「クエリが無い」ことの回避策です。Firestore には `Where` / `OrderBy` / `Count` があるので、そのどれも要らなくなります。**利用側では実際に 3 つとも消えました。** 一覧の走査も、メモリ上の並べ替えも、重さを隠すための短期キャッシュも、移行後に順に削除されています。
 
 ---
 
@@ -139,12 +139,12 @@ rec.Record(ctx, task.JobID, newStatus(task, jobfirestore.StateSucceeded))
 | Firestore が返すもの | 返すエラー | 呼び出し側 |
 | --- | --- | --- |
 | ドキュメント不在 / `codes.NotFound` | `ErrNotFound` | 404。未記録は正常系なので処理を進めてよい |
-| `codes.Unavailable` / `DeadlineExceeded` / `ResourceExhausted` / `Internal` | `ErrUnavailable` | 503。あとで読めるかもしれない |
+| `codes.Unavailable` / `DeadlineExceeded` / `ResourceExhausted` / `Internal` / `Aborted` | `ErrUnavailable` | 503。あとで読めるかもしれない |
 | `codes.PermissionDenied` / `Unauthenticated` | `ErrUnavailable` | 同上。「無い」と誤認させない |
 | ジョブ ID が正規化を通らない | `ErrInvalidJobID` | 400。再試行しても直らない |
 | デコード失敗 | そのまま | 500 |
 
-「未記録」と「あるはずなのに読めない」を**別のエラー**にしているのは、両者で取るべき判断が正反対だからです。記録が無いのは正常なので先へ進んでよく、読めなかっただけの場合を「無い」とみなすと、完了済みのジョブを未完了と誤認して生成をまるごとやり直します。
+「未記録」と「あるはずなのに読めない」を**別のエラー**にしているのは、両者で取るべき判断が正反対だからです。記録が無いのは正常なので先へ進んでよく、読めなかった場合は判断を保留するしかありません。
 
 `PermissionDenied` を `ErrNotFound` に寄せないのがとくに要点です。権限設定を間違えた瞬間に、全ジョブが「未記録」に見えます。
 
@@ -168,8 +168,6 @@ rec.Record(ctx, task.JobID, newStatus(task, jobfirestore.StateSucceeded))
 
 `updated_at` / `queued_at` は文字列ではなく Firestore の Timestamp として持ちます。文字列だと範囲クエリが辞書順になり、`OrderBy` の意味が形式に依存するためです。
 
-状態は常に最新の 1 世代だけを上書きで保持し、履歴は残しません。
-
 ### 成果物を消しても状態は残ります
 
 成果物と同じ場所に状態ファイルを置く作りなら、履歴削除（プレフィックスの一括削除）で状態も一緒に片付きます。**ドキュメントは別の場所にあるので、その連動はありません。** 放置すると孤児が溜まり続けます。
@@ -179,7 +177,7 @@ rec.Record(ctx, task.JobID, newStatus(task, jobfirestore.StateSucceeded))
 - 履歴を削除するときに `Store.Delete` を呼ぶ
 - `updated_at` に TTL ポリシーを張って期限切れを自動削除する（Terraform の `google_firestore_field`）
 
-ジョブ ID の正規化は `Store` の内部で必ず行われます。ジョブ ID は URL パスとドキュメント ID の双方に現れるため、検証はセキュリティ境界を兼ねます。呼び出し側で正規化する必要はありません。
+ジョブ ID の正規化は `Store` の内部で必ず行われるので、呼び出し側で正規化する必要はありません（理由は「[設計上の約束](#-設計上の約束-invariants)」を参照）。
 
 ---
 
