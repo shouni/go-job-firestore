@@ -1,7 +1,7 @@
 # 🔥 Go Job Firestore
 
 [![CI](https://github.com/shouni/go-job-firestore/actions/workflows/ci.yml/badge.svg)](https://github.com/shouni/go-job-firestore/actions/workflows/ci.yml)
-[![Status](https://img.shields.io/badge/Status-Experimental-orange)](#)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
 [![Language](https://img.shields.io/badge/Language-Go-blue)](https://go.dev/)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/go-job-firestore)](https://go.dev/)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-job-firestore)](https://github.com/shouni/go-job-firestore/tags)
@@ -80,7 +80,7 @@ client, err := factory.Client()
 if err != nil {
     return err
 }
-store := jobfirestore.NewStore[JobStatus](client, "ap-voice")
+store := jobfirestore.NewStore[JobStatus](client, serviceName)
 
 // 投入直後に queued を記録する。JobID と UpdatedAt は Save が打刻します
 err = store.Save(ctx, jobID, JobStatus{Status: jobfirestore.Status{
@@ -155,8 +155,7 @@ rec.Record(ctx, task.JobID, newStatus(task, jobfirestore.StateSucceeded))
 コレクション直下に、ドキュメント ID をジョブ ID として 1 ジョブ 1 ドキュメントで置きます。**コレクションはサービスごとに 1 本**で、名前は成果物のバケットと同じ語彙にします。
 
 ```text
-ap-voice/{jobID}
-ap-mv/{jobID}
+{serviceName}/{jobID}
 ```
 
 1 本の共有コレクションに判別フィールドを持たせる形は採りません。全クエリがサービスでの絞り込みを要求することになり、**忘れても落ちずに、他サービスのジョブが履歴画面へ静かに混ざる**からです。複合索引もサービスごとに独立するので、片方の変更が他方に影響しません。
@@ -224,11 +223,11 @@ type PageMeta struct {
 
 ## 🚧 未決の論点 (Open questions)
 
-確かめたいことそのものなので、決まっていないことを明記します。
+決まっていないことを明記します。
 
-1. **ページ番号かカーソルか。** 既存レスポンスの `page` / `total_pages` を保つには `Offset` が要りますが、Firestore は読み飛ばしたドキュメントも課金します。深いページほど走査と変わらないコストになるため、「クエリにしたら安くなる」がどこまで本当かはここで決まります。カーソルへ寄せるなら `PageMeta` の形を変えることになり、画面と M2M クライアントの追随が要ります。
-2. **索引の運用。** 複合索引は Terraform（ap-infra）で管理し、スナップショットを更新します。手で足した索引が本番にだけ存在する状態にはしません。
-3. **メタデータのキャッシュが要るか。** Firestore の読み取りが十分速ければ、一覧のキャッシュ層を持たずに済みます。持たずに済むなら、それも Firestore へ移る利点のひとつとして数えられます。
+1. **ページ番号かカーソルか。** 既存レスポンスの `page` / `total_pages` を保つには `Offset` が要りますが、Firestore は読み飛ばしたドキュメントも課金します。深いページほど走査と変わらないコストになるため、「クエリにしたら安くなる」がどこまで本当かはここで決まります。カーソルへ寄せるなら `PageMeta` の形を変えることになり、画面と M2M クライアントの追随が要ります。**数十件の規模では差が出ないので、件数が育ってからの測定待ちです。**
+2. **索引の運用。** 絞り込みを付けない並べ替えだけの一覧は、**単一フィールドの自動索引で足りることを本番で確認しました**（複合索引は要りませんでした）。`WithState` などの絞り込みを足した時点で複合索引が要るので、そのときは Terraform 側で管理してください。手で足した索引が本番にだけ存在する状態にしないためです。
+3. **メタデータのキャッシュが要るか。** 数十件の規模ではキャッシュ層を持たずに問題ありませんでした。件数が育ったときに再検討します。
 
 ---
 
