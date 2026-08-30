@@ -37,7 +37,7 @@ Cloud Tasks へ投入した非同期ジョブの**進行状況を記録し、履
 
 ```text
 go-job-firestore/
-└── jobfirestore/   # 状態の型・記録 (Store / Recorder)・クエリによる一覧 (List)
+└── jobfirestore/   # 状態の型・記録 (Store / Recorder)・クエリによる一覧 (List / Latest)
 ```
 
 パッケージ名が `firestore` ではなく `jobfirestore` なのは、`cloud.google.com/go/firestore` と衝突させないためです。衝突させると、この SDK を import する全ファイルでエイリアスが要ります。
@@ -212,6 +212,17 @@ items, meta, err := store.List(ctx, page, perPage,
 ```
 
 ページ番号は 1 始まり、`perPage` が 0 以下のときはページングせず全件を返します。`Total` は全件読み込みではなく `Count` 集計クエリで取ります。
+
+### ページ送りが要らないとき
+
+トップ画面の抜粋のように「最新の数件」だけが要るなら `Latest` を使います。件数集計をしないので、`List` より 1 往復ぶん安く済みます。
+
+```go
+// 最新 6 件。ページ情報は返らない
+items, err := store.Latest(ctx, 6, jobfirestore.WithCommand("compose"))
+```
+
+`PageMeta` を返さないのは意図的です。総件数を知らないままページ情報を組み立てると `Total` と `TotalPages` に 0 か当てずっぽうを入れることになり、受け取った側は「本当に 0 件」なのか「数えていない」のかを区別できません。**ページ送りが要るなら `List`、要らないなら `Latest`** という分け方にしてあります。
 
 `PageMeta` の JSON タグは、既存サービスが返しているレスポンスと同じ形です。画面と M2M クライアントの双方が依存しているため、変更するときは利用側の追随が要ります。
 
