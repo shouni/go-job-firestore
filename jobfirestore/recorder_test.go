@@ -70,14 +70,14 @@ func TestRecorderBegin(t *testing.T) {
 		{
 			// 再配信されたタスクをここで打ち切らないと、生成コストが二重に出る。
 			name:      "完了済みなら打ち切り、記録もしない",
-			store:     &fakeStore{prevSet: true, prev: testStatus{Status: Status{State: StateSucceeded}}},
+			store:     &fakeStore{prevSet: true, prev: testStatus{State: StateSucceeded}},
 			wantDone:  true,
 			wantSaved: 0,
 		},
 		{
 			// failed は Cloud Tasks が再試行しうるので終了ではない。
 			name:      "失敗済みは打ち切らない",
-			store:     &fakeStore{prevSet: true, prev: testStatus{Status: Status{State: StateFailed}}},
+			store:     &fakeStore{prevSet: true, prev: testStatus{State: StateFailed}},
 			wantDone:  false,
 			wantSaved: 1,
 		},
@@ -96,7 +96,7 @@ func TestRecorderBegin(t *testing.T) {
 			t.Parallel()
 
 			rec := newTestRecorder(tt.store)
-			next := testStatus{Status: Status{State: StateRunning, QueuedAt: queuedAt}}
+			next := testStatus{State: StateRunning, QueuedAt: queuedAt}
 
 			done, err := rec.Begin(t.Context(), "job-1", next)
 
@@ -121,17 +121,15 @@ func TestRecorderRecordCarriesOver(t *testing.T) {
 
 	queuedAt := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
 	store := &fakeStore{prevSet: true, prev: testStatus{
-		Status: Status{
-			State: StateRunning, Attempts: 2, QueuedAt: queuedAt,
-			Title: "作品名", Command: "generate", Error: "前回の失敗理由",
-		},
+		State: StateRunning, Attempts: 2, QueuedAt: queuedAt,
+		Title: "作品名", Command: "generate", Error: "前回の失敗理由",
 		OutputDir: "gs://bucket/jobs/job-1",
 	}}
 
 	rec := newTestRecorder(store)
 
 	// ワーカーは毎回タスクから状態を組み立て直すので、試行回数も投入時刻も持たない。
-	rec.Record(t.Context(), "job-1", testStatus{Status: Status{State: StateSucceeded}},
+	rec.Record(t.Context(), "job-1", testStatus{State: StateSucceeded},
 		func(next, prev *testStatus) {
 			if prev != nil {
 				next.OutputDir = prev.OutputDir
@@ -166,13 +164,11 @@ func TestRecorderRecordCarriesOver(t *testing.T) {
 func TestRecorderRecordKeepsNewerTitle(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeStore{prevSet: true, prev: testStatus{
-		Status: Status{State: StateRunning, Title: "仮の題目"},
-	}}
+	store := &fakeStore{prevSet: true, prev: testStatus{State: StateRunning, Title: "仮の題目"}}
 
 	rec := newTestRecorder(store)
 	// 生成の途中で確定した題目を、古い値で上書きしない。
-	rec.Record(t.Context(), "job-1", testStatus{Status: Status{State: StateRunning, Title: "確定した題目"}})
+	rec.Record(t.Context(), "job-1", testStatus{State: StateRunning, Title: "確定した題目"})
 
 	if got := store.saved[0].Title; got != "確定した題目" {
 		t.Errorf("Title = %q, want %q", got, "確定した題目")
@@ -182,10 +178,10 @@ func TestRecorderRecordKeepsNewerTitle(t *testing.T) {
 func TestRecorderRecordAppliesAfterCarryOver(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeStore{prevSet: true, prev: testStatus{Status: Status{State: StateQueued, Attempts: 2}}}
+	store := &fakeStore{prevSet: true, prev: testStatus{State: StateQueued, Attempts: 2}}
 
 	rec := newTestRecorder(store)
-	rec.Record(t.Context(), "job-1", testStatus{Status: Status{State: StateRunning}},
+	rec.Record(t.Context(), "job-1", testStatus{State: StateRunning},
 		func(next, _ *testStatus) { next.Attempts++ })
 
 	// 引き継ぎ（2）の後に apply が走るので 3。順序が逆なら 1 になる。
@@ -215,10 +211,10 @@ func TestRecorderRecordSkipsRollback(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			store := &fakeStore{prevSet: true, prev: testStatus{Status: Status{State: StateSucceeded}}}
+			store := &fakeStore{prevSet: true, prev: testStatus{State: StateSucceeded}}
 			rec := newTestRecorder(store)
 
-			rec.Record(t.Context(), "job-1", testStatus{Status: Status{State: tt.next}})
+			rec.Record(t.Context(), "job-1", testStatus{State: tt.next})
 
 			if got := len(store.saved); got != tt.wantSaved {
 				t.Errorf("保存回数 = %d, want %d", got, tt.wantSaved)
@@ -230,11 +226,11 @@ func TestRecorderRecordSkipsRollback(t *testing.T) {
 func TestRecorderRecordChecksRollbackAfterApply(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeStore{prevSet: true, prev: testStatus{Status: Status{State: StateSucceeded}}}
+	store := &fakeStore{prevSet: true, prev: testStatus{State: StateSucceeded}}
 	rec := newTestRecorder(store)
 
 	// apply は状態を書き換えられるので、実際に保存される値で判定しないと素通りする。
-	rec.Record(t.Context(), "job-1", testStatus{Status: Status{State: StateQueued}},
+	rec.Record(t.Context(), "job-1", testStatus{State: StateQueued},
 		func(next, _ *testStatus) { next.State = StateRunning })
 
 	if len(store.saved) != 0 {
@@ -249,7 +245,7 @@ func TestRecorderRecordSavesDespiteUnreadablePrevious(t *testing.T) {
 	rec := newTestRecorder(store)
 
 	// 観測の欠けを理由に記録そのものを止めない（引き継ぎだけが失われる）。
-	rec.Record(t.Context(), "job-1", testStatus{Status: Status{State: StateFailed}})
+	rec.Record(t.Context(), "job-1", testStatus{State: StateFailed})
 
 	if len(store.saved) != 1 {
 		t.Errorf("保存回数 = %d, want 1", len(store.saved))
@@ -263,7 +259,7 @@ func TestRecorderRecordSwallowsSaveFailure(t *testing.T) {
 	rec := newTestRecorder(store)
 
 	// 書けなかったことを理由に生成を中断するほうが害が大きいので、警告ログに留める。
-	rec.Record(t.Context(), "job-1", testStatus{Status: Status{State: StateSucceeded}})
+	rec.Record(t.Context(), "job-1", testStatus{State: StateSucceeded})
 }
 
 func TestRecorderAlreadySucceeded(t *testing.T) {
@@ -278,7 +274,7 @@ func TestRecorderAlreadySucceeded(t *testing.T) {
 		{name: "未記録は未完了", store: &fakeStore{}, want: false},
 		{
 			name:  "完了済み",
-			store: &fakeStore{prevSet: true, prev: testStatus{Status: Status{State: StateSucceeded}}},
+			store: &fakeStore{prevSet: true, prev: testStatus{State: StateSucceeded}},
 			want:  true,
 		},
 		{name: "読めなければエラー", store: &fakeStore{getErr: ErrUnavailable}, wantErr: ErrUnavailable},

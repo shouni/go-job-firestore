@@ -47,7 +47,11 @@ type Status struct {
 	// Error は State が failed のときの失敗理由です。
 	Error string `json:"error,omitempty" firestore:"error,omitempty"`
 	// Attempts はワーカーが処理を開始した回数です。2 以上なら再試行されています。
-	Attempts int `json:"attempts,omitempty" firestore:"attempts,omitempty"`
+	//
+	// json だけ omitzero なのは encoding/json/v2 のためです。v2 の omitempty は
+	// 数値の 0 を落とさないため、omitempty のままだと利用側が v2 へ移った時点で
+	// attempts:0 が全応答に現れます。v1 の出力は omitzero でも変わりません。
+	Attempts int `json:"attempts,omitzero" firestore:"attempts,omitempty"`
 
 	// QueuedAt と UpdatedAt は Firestore の Timestamp として保存されます。
 	// 文字列で持つと範囲クエリが辞書順になり、OrderBy の意味が表記の形式に
