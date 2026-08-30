@@ -37,8 +37,9 @@ func WithCommand(command string) ListOption {
 // WithOrderBy は並べ替えるフィールドと向きを変えます。
 // 既定は queued_at の降順（新しい順）です。
 //
-// 絞り込みと組み合わせると複合索引が要ります。索引は ap-infra の Terraform で
+// 絞り込みと組み合わせると複合索引が要ります。索引は Terraform などコードの側で
 // 管理してください（手で足した索引が本番にだけ存在する状態にしないためです）。
+// 絞り込みを付けない並べ替えだけなら、単一フィールドの自動索引で足ります。
 func WithOrderBy(field string, descending bool) ListOption {
 	return func(o *listOptions) {
 		o.orderBy = field
