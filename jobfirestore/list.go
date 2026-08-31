@@ -232,11 +232,11 @@ func count(ctx context.Context, query firestore.Query) (int, error) {
 
 	value, ok := result[countAlias]
 	if !ok {
-		return 0, errors.New("jobfirestore: 件数集計クエリが結果を返しませんでした")
+		return 0, errors.New("jobfirestore: count query returned no result")
 	}
 	counted, ok := value.(*firestorepb.Value)
 	if !ok {
-		return 0, fmt.Errorf("jobfirestore: 件数集計クエリが想定外の型を返しました: %T", value)
+		return 0, fmt.Errorf("jobfirestore: count query returned an unexpected type: %T", value)
 	}
 	return int(counted.GetIntegerValue()), nil
 }
