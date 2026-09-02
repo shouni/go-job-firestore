@@ -8,6 +8,22 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-job-firestore.svg)](https://pkg.go.dev/github.com/shouni/go-job-firestore)
 
+> [!WARNING]
+> **このモジュールは非推奨です。** [`github.com/shouni/gcp-kit`](https://github.com/shouni/gcp-kit) の
+> `jobstatus` パッケージへ移りました。Firestore アダプタは GCP 固有なので、GCP 固有のものを
+> 集めた gcp-kit が置き場として正しいためです。
+>
+> 移行は import パスの差し替えと、セレクタの `jobfirestore.` → `jobstatus.` だけです（API は同一）。
+>
+> ```
+> - "github.com/shouni/go-job-firestore/jobfirestore"
+> + "github.com/shouni/gcp-kit/jobstatus"
+> ```
+>
+> `gcp-kit` 側では `go-job-kit` の `jobstatus` と同名になりますが、これは意図的です。
+> 1 つの概念の 2 実装（Firestore とオブジェクトストレージ）で、併用するアプリはありません
+> — `math/rand` と `crypto/rand` と同じ関係です。
+
 ## 🚀 概要 (About) - 記録・再実行ガード・一覧を、Firestore だけで完結させる
 
 Cloud Tasks へ投入した非同期ジョブの**進行状況を記録し、履歴を一覧する**ための基盤です。保存先は Firestore ひとつで、オブジェクトストレージを必要としません。
