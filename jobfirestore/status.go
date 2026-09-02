@@ -4,6 +4,15 @@
 // 生成の成否が通知にしか残らず、失敗したジョブが UI から消えていた問題を解消する
 // ための記録層です。あわせて、Cloud Tasks の at-least-once 配信に対する再実行ガードの
 // 根拠にもなります。
+//
+// Deprecated: このモジュールは github.com/shouni/gcp-kit/jobstatus へ移りました。
+// Firestore アダプタは GCP 固有なので、GCP 固有のものを集めた gcp-kit が置き場として
+// 正しいためです（gcp-kit は GCP に依存しない 3 パッケージを go-serve-kit へ出しており、
+// 同じ基準の裏返しになります）。移行は import パスの差し替えとセレクタの
+// jobfirestore. → jobstatus. だけで、API は同一です。
+//
+// 新しい利用者はこちらを使わないでください。両方が生きていると、片方だけ直したときに
+// 静かにドリフトします。
 package jobfirestore
 
 import "time"
